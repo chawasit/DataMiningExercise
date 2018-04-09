@@ -15,6 +15,10 @@ def download_dataset(save_path):
 
 
 def unzip_dataset(zipfile_path, extract_directory):
+    if os.path.isdir(extract_directory):
+        print("Files already extracted")
+        return
+
     print("Unzipping dataset")
     zip_file = zipfile.ZipFile(zipfile_path, 'r')
     zip_file.extractall(extract_directory)
