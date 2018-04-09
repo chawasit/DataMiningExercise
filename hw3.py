@@ -1,130 +1,87 @@
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import KFold
+
+import dataset
+import neuralnetwork as nn
 
 
-def sigmoid(x, derivative=False):
-    if derivative:
-        return x * (1 - x)
-
-    return 1 / (1 + np.exp(-x))
+def preprocess(input_matrix):
+    pass
 
 
-def relu(x, derivative=False):
-    y = x.copy()
-    if derivative:
-        y[x > 0] = 1
-        y[x <= 0] = 0.001
-        return y
+def accuracy_score(hypothesis, desired):
+    hypothesis[hypothesis > 0.6] = 1
+    hypothesis[hypothesis < 0.4] = 0
 
-    y[x <= 0] = y[x <= 0] * 0.001
-    return y
+    return np.sum(hypothesis == desired) / len(desired)
 
 
-def mean_square_error(hypothesis, desired, derivative=False):
-    if derivative:
-        return hypothesis - desired
-
-    loss = hypothesis - desired
-    cost = np.sum(loss ** 2) / 2
-
-    return cost
-
-
-def add_bias(x, bias):
-    return np.concatenate((x, bias), axis=1)
-
-
-def extend_input_bias(x):
-    bias = np.ones((len(x), 1), dtype=x.dtype)
-
-    return add_bias(x, bias)
-
-
-def activate(x, w, activate_fn=None):
-    x = extend_input_bias(x)
-    y = x.dot(w)
-
-    if activate_fn:
-        y = activate_fn(y)
-
-    return y
-
-
-def gradient_descend(x, w, y, parent_gradient, activate_fn=None):
-    x = extend_input_bias(x).T
-    delta_y = np.ones(len(y))
-
-    if activate_fn:
-        delta_y = activate_fn(y, derivative=True)
-
-    gradient = delta_y * parent_gradient
-    delta_w = x.dot(gradient)
-
-    w_without_bias = w[:-1]
-    gradient_to_child = gradient.dot(w_without_bias.T)
-
-    return delta_w, gradient_to_child
-
-
-def place_holder(size):
-    return np.array(size, dtype=np.float32)
-
-
-def generate_weight(number_of_input, number_of_node):
-    # number of input + 1 bias
-    # weight = np.random.random((number_of_input, number_of_node)) * np.sqrt(2 / (number_of_input + number_of_node))
-    # bias = np.zeros((1, number_of_node))
-    # return np.concatenate((weight, bias))
-    return np.random.random((number_of_input + 1, number_of_node))
-
-
-def or_operator_test():
-    x = np.array([
-        [1, 1],
-        [1, 0],
-        [0, 1],
-        [0, 0],
-    ])
-
-    y = np.array([
-        [0, 1],
-        [1, 0],
-        [1, 0],
-        [0, 1]
-    ])
-
-    w1 = generate_weight(2, 5)
-    w2 = generate_weight(5, 2)
-
-    learning_rate = 1e0
-    epoch = 50000
-
-    ac_fn = sigmoid
-    for i in range(epoch):
-        h1 = activate(x, w1, activate_fn=ac_fn)
-        o = activate(h1, w2, activate_fn=ac_fn)
-
-        error = mean_square_error(o, y)
-        print(f"epoch {i} = error:{error}")
-        if error < 1e-2:
-            break
-        delta_error = mean_square_error(o, y, derivative=True)
-
-        delta_w2, gradient = gradient_descend(h1, w2, o, delta_error, activate_fn=ac_fn)
-        delta_w1, _ = gradient_descend(x, w1, h1, gradient, activate_fn=ac_fn)
-
-        w1 += -learning_rate * delta_w1
-        w2 += -learning_rate * delta_w2
-
-    h1 = activate(x, w1, activate_fn=ac_fn)
-    o = activate(h1, w2, activate_fn=ac_fn)
-
-    print(w1)
-    print(w2)
-    print("Eval", o)
+def create_nn():
+    return [
+        nn.Input()
+        , nn.LinearLayer(8, 16)
+        , nn.SigmoidActivation()
+        , nn.LinearLayer(16, 16)
+        , nn.SigmoidActivation()
+        , nn.LinearLayer(16, 8)
+        , nn.SigmoidActivation()
+        , nn.LinearLayer(8, 1)
+        , nn.SigmoidActivation()
+    ]
 
 
 if __name__ == '__main__':
-    df = pd.read_csv('data/HTRU_2.csv', header=None)
-    print(df.describe())
+    dataset.prepare_dataset('data')
+    df = pd.read_csv('data/HTRU_2.csv', header=None, names=['1', '2', '3', '4', '5', '6', '7', '8', 'class'])
 
+    input_matrix = df[['1', '2', '3', '4', '5', '6', '7', '8']].as_matrix()
+    class_label = df[['class']].as_matrix()
+
+    print(f"class 0: {np.sum(class_label == 0)}, 1: {np.sum(class_label == 1)}")
+
+    kf = KFold(n_splits=10)
+    accuracy_list = []
+    highest_accuracy = 0
+    model = None
+    for train_index, test_index in kf.split(input_matrix):
+        input_train, class_train = input_matrix[train_index], class_label[train_index]
+        input_test, class_test = input_matrix[test_index], class_label[test_index]
+
+        nn_layers = create_nn()
+        nn_layers[0].set(input_train)
+
+        error = np.inf
+        acceptable_error = 1e-2
+        epoch = 1
+        learning_rate = 1e-4
+        max_epoch = 1000
+        while error > acceptable_error and epoch < max_epoch + 1:
+            outputs = nn.forward(nn_layers)
+            hypothesis = outputs[-1]
+
+            error = nn.mean_square_error(hypothesis, class_train)
+            error_gradient = nn.mean_square_error(hypothesis, class_train, derivative=True)
+
+            nn.backward(outputs, nn_layers, error_gradient, learning_rate)
+
+            epoch += 1
+
+        nn_layers[0].set(input_test)
+        outputs = nn.forward(nn_layers)
+        hypothesis = outputs[-1]
+
+        accuracy = accuracy_score(hypothesis, class_test)
+
+        if highest_accuracy < accuracy:
+            highest_accuracy = accuracy
+            model = nn_layers
+
+        print(f"Accuracy {accuracy}")
+        accuracy_list.append(accuracy)
+
+    print("Average Accuracy: ", sum(accuracy_list) / len(accuracy_list))
+
+    for layer in nn_layers:
+        if type(layer) is nn.LinearLayer:
+            print("W", layer.weight)
