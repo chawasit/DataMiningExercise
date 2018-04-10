@@ -11,6 +11,10 @@ def mean_square_error(hypothesis, desired, derivative=False):
     return cost
 
 
+def cross_entropy(y_predict, y_true):
+    return - np.multiply(y_true, np.log(y_predict)).sum() / y_predict.shape[0]
+
+
 def add_bias(x, bias):
     return np.concatenate((x, bias), axis=1)
 
@@ -54,20 +58,69 @@ class LinearLayer(Layer):
         return gradient.dot(self.weight[:-1].T)
 
 
-class SigmoidActivation(Layer):
+class ReluActivation(Layer):
     @staticmethod
-    def _sigmoid(x, derivative=False):
+    def relu(x, alpha=1e-2, derivative=False):
+        if derivative:
+            x[x > 0] = 1
+            x[x <= 0] = alpha
+
+        x[x <= 0] = x[x <= 0] * alpha
+        return x
+
+    def forward(self, input):
+        return self.relu(input)
+
+    def backward(self, input, gradient, learning_rate=None):
+        output = self.forward(input)
+        return self.relu(output, derivative=True) * gradient
+
+
+class LogisticActivation(Layer):
+    @staticmethod
+    def logistic(x, derivative=False):
         if derivative:
             return x * (1 - x)
 
         return 1 / (1 + np.exp(-x))
 
     def forward(self, input):
-        return self._sigmoid(input)
+        return self.logistic(input)
 
     def backward(self, input, gradient, learning_rate=None):
         output = self.forward(input)
-        return self._sigmoid(output, derivative=True) * gradient
+        return self.logistic(output, derivative=True) * gradient
+
+
+class TanhActivation(Layer):
+    @staticmethod
+    def tanh(x, derivative=False):
+        if derivative:
+            return 1 - x ** 2
+
+        return np.tanh(x)
+
+    def forward(self, input):
+        return self.tanh(input)
+
+    def backward(self, input, gradient, learning_rate=None):
+        output = self.forward(input)
+        return self.tanh(output, derivative=True) * gradient
+
+
+class SoftmaxActivation(Layer):
+    # http://peterroelants.github.io/posts/neural_network_implementation_part05/
+
+    @staticmethod
+    def softmax(x):
+        return np.exp(x) / np.exp(x).sum(axis=1, keepdims=True)
+
+    def forward(self, input):
+        return self.softmax(input)
+
+    def backward(self, input, target, learning_rate=None):
+        output = self.forward(input)
+        return (output - target) / output.shape[0]
 
 
 class Input(Layer):
@@ -110,9 +163,9 @@ if __name__ == '__main__':
     layers = [
         input
         , LinearLayer(2, 5)
-        , SigmoidActivation()
+        , LogisticActivation()
         , LinearLayer(5, 2)
-        , SigmoidActivation()
+        , SoftmaxActivation()
     ]
 
     x = np.array([
@@ -139,12 +192,10 @@ if __name__ == '__main__':
         outputs = forward(layers)
         y_hat = outputs[-1]
 
-        error = mean_square_error(y_hat, y)
+        error = cross_entropy(y_hat, y)
         print(f"{i} Error {error}")
 
-        error_gradient = mean_square_error(y_hat, y, derivative=True)
-
-        backward(outputs, layers, error_gradient, learning_rate)
+        backward(outputs, layers, y, learning_rate)
 
         i += 1
 
