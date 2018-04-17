@@ -4,9 +4,12 @@ import pandas as pd
 from sklearn import metrics
 from sklearn.model_selection import KFold
 import seaborn as sns
+import plotly.plotly as py
+import plotly.graph_objs as go
 
 import dataset
 import neuralnetwork as nn
+import normalize as nm
 
 
 def log_scale(x):
@@ -73,12 +76,12 @@ def create_nn():
     return [
         nn.Input()
         , nn.LinearLayer(8, 16)
-        , nn.LogisticActivation()
+        , nn.TanhActivation()
         , nn.LinearLayer(16, 16)
-        , nn.LogisticActivation()
-        , nn.LinearLayer(16, 16)
-        , nn.LogisticActivation()
+        , nn.TanhActivation()
         , nn.LinearLayer(16, 2)
+        , nn.TanhActivation()
+        # , nn.LinearLayer(16, 2)
         , nn.SoftmaxActivation()
     ]
 
@@ -140,69 +143,108 @@ if __name__ == '__main__':
     #     plt.show()
     input_matrix = df[['1', '2', '3', '4', '5', '6', '7', '8']].as_matrix()
 
-    preprocess(input_matrix)
+    # preprocess(input_matrix)
     raw_class_label = df[['class']].as_matrix()
-    #
-    # class_label = np.zeros((raw_class_label.shape[0], 2))
-    # class_label[np.arange(raw_class_label.shape[0]), raw_class_label[:, 0]] = 1
-    #
-    # print(class_label)
-    #
-    # print(f"class 0: {np.sum(np.argmax(class_label, axis=1) == 0)}, 1: {np.sum(np.argmax(class_label, axis=1) == 1)}")
-    #
-    # kf = KFold(n_splits=8)
-    # learning_rate = 1e-1
-    # batch_size = 100
-    # max_epoch = 300
-    # acceptable_loss = 1e-2
-    #
-    # score_list = []
-    # highest_score = 0
-    # model = None
-    # for train_index, test_index in kf.split(input_matrix):
-    #     input_train, class_train = input_matrix[train_index], class_label[train_index]
-    #     input_test, class_test = input_matrix[test_index], class_label[test_index]
-    #
-    #     nn_layers = create_nn()
-    #
-    #     cost = np.inf
-    #     moving_cost = np.inf
-    #     epoch = 0
-    #     cost_list = []
-    #     while epoch <= max_epoch and moving_cost > 1e-4:
-    #         new_cost = train_minibatch(input_train, class_train, nn_layers, learning_rate, batch_size=batch_size)
-    #
-    #         if np.isinf(cost):
-    #             moving_cost = cost = new_cost
-    #         else:
-    #             old_cost = cost
-    #             cost = 0.75 * cost + 0.25 * new_cost
-    #             moving_cost = 0.75 * moving_cost + 0.25 * np.abs(old_cost - cost)
-    #
-    #         cost_list.append(cost)
-    #         if epoch % 10 == 0:
-    #             output = predict(input_test, nn_layers)
-    #
-    #             score = f1_score(translate_class(output), translate_class(class_test))
-    #             print(f"Epoch {epoch} | cost: {cost}, moving cost: {moving_cost}, f1 score: {score}")
-    #
-    #         epoch += 1
-    #
-    #     print(f"Epoch {epoch} | cost: {cost}, moving cost: {moving_cost}, f1 score: {score}")
-    #
-    #     output = predict(input_test, nn_layers)
-    #     score = f1_score(translate_class(output), translate_class(class_test))
-    #     confusion_matrix(translate_class(output), translate_class(class_test))
-    #
-    #     plt.plot(cost_list)
-    #     plt.show()
-    #
-    #     if highest_score < score:
-    #         highest_score = score
-    #         model = nn_layers
-    #
-    #     print(f"Score: {score}")
-    #
-    #     score_list.append(score)
-    #
-    # print("Average Score: ", sum(score_list) / len(score_list))
+
+    # g = sns.PairGrid(df, hue='class', palette="Set2",
+    #                 hue_kws={"marker": ["o", "s"]})
+    # g = g.map_diag(plt.hist)
+    # g = g.map_offdiag(plt.scatter)
+    # g = g.add_legend()
+    # plt.show()
+
+
+    class_label = np.zeros((raw_class_label.shape[0], 2))
+    class_label[np.arange(raw_class_label.shape[0]), raw_class_label[:, 0]] = 1
+    print(class_label)
+
+    dataset_normalizer = nm.Normalizer()
+    dataset_normalizer.fit(input_matrix)
+
+    normalized_dataset = dataset_normalizer.transform(
+        input_matrix
+        , scale_to_range=(-2, 2)
+    )
+
+    ndf = pd.DataFrame(data=normalized_dataset)
+    print(ndf.describe())
+
+    ndf.boxplot()
+    plt.show()
+    # data = []
+    # for col in range(normalized_dataset.shape[1]):
+    #     data.append(  go.Box( y=normalized_dataset[:, col], name=col, showlegend=False ) )
+
+    # url = py.plot(data, filename='normalized-datset')
+    
+    # exit()
+
+    print(f"class 0: {np.sum(np.argmax(class_label, axis=1) == 0)}, 1: {np.sum(np.argmax(class_label, axis=1) == 1)}")
+    
+    kf = KFold(n_splits=8)
+    learning_rate = 1e-2
+    batch_size = 30
+    max_epoch = 1000
+    acceptable_loss = 1e-2
+    
+    score_list = []
+    highest_score = 0
+    model = None
+    for train_index, test_index in kf.split(input_matrix):
+        input_train, class_train = input_matrix[train_index], class_label[train_index]
+        input_test, class_test = input_matrix[test_index], class_label[test_index]
+
+        train_normalizer = nm.Normalizer()
+        train_normalizer.fit(input_train)
+        input_train = train_normalizer.transform(
+            input_train
+            , scale_to_range=(-2, 2)
+        )
+        input_test = train_normalizer.transform(
+            input_test
+            , scale_to_range=(-2, 2)
+        )
+
+        nn_layers = create_nn()
+    
+        cost = np.inf
+        moving_cost = np.inf
+        epoch = 0
+        cost_list = []
+
+        while epoch <= max_epoch and moving_cost > 1e-6:
+            new_cost = train_minibatch(input_train, class_train, nn_layers, learning_rate, batch_size=batch_size)
+    
+            if np.isinf(cost):
+                moving_cost = cost = new_cost
+            else:
+                old_cost = cost
+                cost = 0.75 * cost + 0.25 * new_cost
+                moving_cost = 0.75 * moving_cost + 0.25 * np.abs(old_cost - cost)
+    
+            cost_list.append(cost)
+            if epoch % 100 == 0:
+                output = predict(input_test, nn_layers)
+    
+                score = f1_score(translate_class(output), translate_class(class_test))
+                print(f"Epoch {epoch} | cost: {cost}, moving cost: {moving_cost}, f1 score: {score}")
+    
+            epoch += 1
+    
+        print(f"Epoch {epoch} | cost: {cost}, moving cost: {moving_cost}, f1 score: {score}")
+    
+        output = predict(input_test, nn_layers)
+        score = f1_score(translate_class(output), translate_class(class_test))
+        confusion_matrix(translate_class(output), translate_class(class_test))
+        # plt.plot(cost_list)
+        # plt.show()
+    
+        if highest_score < score:
+            highest_score = score
+            model = nn_layers
+    
+        print(f"Score: {score}")
+    
+        score_list.append(score)
+    
+    print("Average Score: ", sum(score_list) / len(score_list))
