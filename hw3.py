@@ -81,7 +81,6 @@ def create_nn():
         , nn.TanhActivation()
         , nn.LinearLayer(16, 2)
         , nn.TanhActivation()
-        # , nn.LinearLayer(16, 2)
         , nn.SoftmaxActivation()
     ]
 
@@ -136,48 +135,12 @@ if __name__ == '__main__':
     df = pd.read_csv('data/HTRU_2.csv', header=None, names=['1', '2', '3', '4', '5', '6', '7', '8', 'class'])
 
     print(df.describe())
-    # features = ['1', '2', '3', '4', '5', '6', '7', '8']
-    # for feature in features:
-    #     df[[feature]].boxplot()
-    #
-    #     plt.show()
     input_matrix = df[['1', '2', '3', '4', '5', '6', '7', '8']].as_matrix()
-
-    # preprocess(input_matrix)
     raw_class_label = df[['class']].as_matrix()
-
-    # g = sns.PairGrid(df, hue='class', palette="Set2",
-    #                 hue_kws={"marker": ["o", "s"]})
-    # g = g.map_diag(plt.hist)
-    # g = g.map_offdiag(plt.scatter)
-    # g = g.add_legend()
-    # plt.show()
-
 
     class_label = np.zeros((raw_class_label.shape[0], 2))
     class_label[np.arange(raw_class_label.shape[0]), raw_class_label[:, 0]] = 1
     print(class_label)
-
-    dataset_normalizer = nm.Normalizer()
-    dataset_normalizer.fit(input_matrix)
-
-    normalized_dataset = dataset_normalizer.transform(
-        input_matrix
-        , scale_to_range=(-2, 2)
-    )
-
-    ndf = pd.DataFrame(data=normalized_dataset)
-    print(ndf.describe())
-
-    ndf.boxplot()
-    plt.show()
-    # data = []
-    # for col in range(normalized_dataset.shape[1]):
-    #     data.append(  go.Box( y=normalized_dataset[:, col], name=col, showlegend=False ) )
-
-    # url = py.plot(data, filename='normalized-datset')
-    
-    # exit()
 
     print(f"class 0: {np.sum(np.argmax(class_label, axis=1) == 0)}, 1: {np.sum(np.argmax(class_label, axis=1) == 1)}")
     
@@ -196,13 +159,15 @@ if __name__ == '__main__':
 
         train_normalizer = nm.Normalizer()
         train_normalizer.fit(input_train)
+
         input_train = train_normalizer.transform(
             input_train
-            , scale_to_range=(-2, 2)
+            , scale_to_range=(-1.5, 1.5)
         )
+
         input_test = train_normalizer.transform(
             input_test
-            , scale_to_range=(-2, 2)
+            , scale_to_range=(-1.5, 1.5)
         )
 
         nn_layers = create_nn()
@@ -246,5 +211,6 @@ if __name__ == '__main__':
         print(f"Score: {score}")
     
         score_list.append(score)
-    
+
+    print(f"Highest Score: {highest_score}")
     print("Average Score: ", sum(score_list) / len(score_list))
